@@ -1,5 +1,9 @@
 # Moe x FastSign — Feather repo
 
+**Live source URL:** `https://jacobyz211.github.io/feather-repo/repo.json`
+
+Add that URL in Feather → Sources → Add Source. Served by GitHub Pages as `application/json`.
+
 A single Feather/AltStore-format source that combines:
 
 - **997 apps** from [fastsign.dev/repo.lite.json](https://fastsign.dev/repo.lite.json) (Alan's Gigantic Repo)
@@ -17,15 +21,14 @@ Moe entries show `Moe` as the developer; duplicates of fastsign names get a `(Mo
 
 ## Using it in Feather
 
-Feather needs the repo to live at a public HTTPS URL — a local file won't work.
+Feather needs the repo at a public HTTPS URL — a local file won't work.
 
-1. Upload `repo.json` somewhere public, e.g. GitHub Pages, Cloudflare Pages, Netlify, or any static host.
-   Make sure it is served as `application/json` at the exact URL you'll enter.
-2. Open Feather → **Sources** (or Settings → Sources) → **Add Source**.
-3. Paste your URL, e.g. `https://yourdomain.com/repo.json`.
+1. Open Feather → **Sources** (or Settings → Sources) → **Add Source**.
+2. Paste `https://jacobyz211.github.io/feather-repo/repo.json`.
 
-Quick GitHub Pages route: create a repo, drop `repo.json` in it, enable Pages on the
-`main` branch root, then use `https://<user>.github.io/<repo>/repo.json`.
+To move it to your own host later, upload `repo.json` to any static host that serves
+`application/json`, and update the `sourceURL` field to the new URL (rebuild with
+`REPO_URL=https://your.domain/repo.json python build_repo.py`).
 
 Optionally, before hosting, add a `"sourceURL"` field equal to the final public URL
 (AltStore convention — Feather doesn't require it) and change `website`/`iconURL` to
@@ -36,11 +39,13 @@ your own if you want the header to point at your page.
 Upstreams change often. Rerun:
 
 ```bash
-python build_repo.py
+REPO_URL=https://jacobyz211.github.io/feather-repo/repo.json python build_repo.py
+git commit -am "Refresh apps" && git push
 ```
 
 It re-downloads the fastsign JSON, scrapes all of Moe's catalog pages, and rewrites
-`repo.json`. Requires only the Python standard library.
+`repo.json`. Requires only the Python standard library. GitHub Pages redeploys
+automatically after the push.
 
 ## Notes on the data
 
