@@ -2,15 +2,33 @@
 
 **Live source URL:** `https://jacobyz211.github.io/feather-repo/repo.json`
 
-Add that URL in Feather → Sources → Add Source. Served by GitHub Pages as `application/json`.
+Add that URL in Feather → Sources → Add Source. Served by GitHub Pages as
+`application/json` and gzipped in transit.
 
 A single Feather/AltStore-format source that combines:
 
-- **997 apps** from [fastsign.dev/repo.lite.json](https://fastsign.dev/repo.lite.json) (Alan's Gigantic Repo)
+- **17,135 apps** from [fastsign.dev/repo.json](https://fastsign.dev/repo.json) (the full repo, not the 997-app lite one)
 - **238 apps** from [moe.mohkg1017.pro](https://moe.mohkg1017.pro) (Moe's App Hub)
 
-Fully merged: **1234 apps**, deduplicated on bundle ID + download URL, sorted by name.
+Fully merged: **17,368 apps**, deduplicated on bundle ID + download URL, sorted by name.
 Moe entries show `Moe` as the developer; duplicates of fastsign names get a `(Moe)` suffix.
+
+## Why it still loads fast
+
+The upstream full repo is 23 MB. Feather downloads, decodes, and imports every app,
+so the build rewrites each entry into the smallest shape Feather actually reads:
+
+| Change | Effect |
+| --- | --- |
+| Drop the `versions` array | every upstream app has exactly one version, and it duplicates the top-level fields — **−5.9 MB** |
+| Drop `icon`, `bundleID`, `fullDate` | exact duplicates of `iconURL`, `bundleIdentifier`, `versionDate` — **−2.2 MB** |
+| Clip descriptions to 500 chars | median is 180, so only long outliers lose text — **−1.7 MB** |
+| Minify JSON, LF-only | removes formatting whitespace |
+
+Result: **14 MB raw, ~1.35 MB gzipped** — Feather still shows name, developer, icon,
+version, date, size, minimum iOS, subtitle, tint color, and description for every app.
+Feather resolves downloads from the top-level `downloadURL`, so nothing breaks;
+the only loss is a version-history link for apps that never had more than one version.
 
 ## Files
 
@@ -21,18 +39,15 @@ Moe entries show `Moe` as the developer; duplicates of fastsign names get a `(Mo
 
 ## Using it in Feather
 
-Feather needs the repo at a public HTTPS URL — a local file won't work.
-
 1. Open Feather → **Sources** (or Settings → Sources) → **Add Source**.
 2. Paste `https://jacobyz211.github.io/feather-repo/repo.json`.
 
-To move it to your own host later, upload `repo.json` to any static host that serves
-`application/json`, and update the `sourceURL` field to the new URL (rebuild with
-`REPO_URL=https://your.domain/repo.json python build_repo.py`).
+First import of ~17k apps will take a while — that's Feather inserting rows, not the
+download. Once cached, the source list is instant.
 
-Optionally, before hosting, add a `"sourceURL"` field equal to the final public URL
-(AltStore convention — Feather doesn't require it) and change `website`/`iconURL` to
-your own if you want the header to point at your page.
+To move it to your own host, upload `repo.json` to any static host that serves
+`application/json`, then rebuild with `REPO_URL=https://your.domain/repo.json` so the
+`sourceURL` field matches.
 
 ## Refreshing
 
@@ -58,15 +73,15 @@ automatically after the push.
   `uc?export=download&id=…&confirm=t` URLs so Feather can fetch the IPA instead of
   an HTML page. Availability of those files is still controlled by Moe.
 - Versions listed as `Latest` upstream stay as `Latest`.
-- Some apps appear in both sources with the same bundle ID (510 duplicates already
-  exist inside the fastsign repo). Feather keys entries on bundle ID + download URL,
-  so all variants remain listed.
+- Many apps share a bundle ID (the full fastsign repo has thousands of variants).
+  Feather keys entries on bundle ID + download URL, so all variants remain listed.
 
 ## Validation performed
 
-- JSON parses; every one of the 1234 entries has name, bundle ID, version, date,
-  icon URL, download URL, and a `versions` array whose version matches the app's.
+- JSON parses; all 17,368 entries have name, bundle ID, version, date, HTTP icon,
+  HTTP download URL, and integer size; descriptions are ≤ 500 chars.
 - No duplicate bundle ID + download URL pairs, no relative icon URLs, no non-HTTP
-  download links.
-- Dates are `YYYY-MM-DD`; sizes are integers (bytes).
+  download links; all dates are `YYYY-MM-DD`.
+- Checked Feather's `ASRepository.App` source: missing `versions` falls back to the
+  top-level `version`, `versionDate`, and `downloadURL`.
 - Could not run Feather itself (Windows host), so in-app import is untested.

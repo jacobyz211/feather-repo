@@ -2,8 +2,13 @@
 """Build a merged Feather/AltStore repo from fastsign.dev and Moe's App Hub.
 
 Sources:
-  * https://fastsign.dev/repo.lite.json  (AltStore-format JSON)
-  * https://moe.mohkg1017.pro/           (HTML catalog, no repo JSON published)
+  * https://fastsign.dev/repo.json   (full AltStore-format JSON, ~17k apps)
+  * https://moe.mohkg1017.pro/        (HTML catalog, no repo JSON published)
+
+Feather has to download, decode and import every app in this file, so the output is
+written in a deliberately small shape: only fields Feather reads, one version per
+app (upstream has exactly one anyway), duplicate icon/bundle/date keys dropped, long
+descriptions clipped, and the whole file minified.
 
 Run:  python build_repo.py
 Out:  repo.json
@@ -17,9 +22,10 @@ import re
 import sys
 import urllib.request
 
-FASTSIGN = "https://fastsign.dev/repo.lite.json"
+FASTSIGN = "https://fastsign.dev/repo.json"
 MOE = "https://moe.mohkg1017.pro"
 OUT = "repo.json"
+MAX_DESC = 500
 
 REPO_NAME = "Moe x FastSign"
 REPO_IDENTIFIER = "pro.moe.fastsign"
@@ -123,6 +129,7 @@ def moe_to_app(card):
         slug = re.sub(r"\.+", ".", slug)
         bundle = f"pro.moe.{slug}.{card['id'].rsplit('_', 1)[-1]}"
 
+    desc = card["description"] or f"{name} for iOS (version {version}). Source: Moe's App Hub."
     entry = {
         "name": name,
         "bundleIdentifier": bundle,
@@ -131,37 +138,58 @@ def moe_to_app(card):
         "versionDate": card["date"] or "2026-01-01",
         "downloadURL": card["downloadURL"],
         "iconURL": icon,
-        "localizedDescription": card["description"]
-        or f"{name} for iOS (version {version}). Source: Moe's App Hub.",
+        "localizedDescription": desc[:MAX_DESC],
         "type": 1,
     }
     if card["size"]:
         entry["size"] = card["size"]
-    entry["versions"] = [{
-        "version": version,
-        "date": entry["versionDate"],
-        "localizedDescription": entry["localizedDescription"],
-        "downloadURL": entry["downloadURL"],
-    }]
-    if card["size"]:
-        entry["versions"][0]["size"] = card["size"]
     return entry
 
 
-def normalize_fastsign(app):
-    """Keep the source entry; just fill fields Feather requires."""
-    app.setdefault("type", 1)
-    if not app.get("downloadURL"):
+def slim_fastsign(app):
+    """Reduce a fastsign entry to the fields Feather reads.
+
+    The upstream entry repeats itself: `icon` == `iconURL`, `bundleID` ==
+    `bundleIdentifier`, `fullDate` duplicates `versionDate`, and `versions` always
+    holds exactly one copy of the same version. Dropping those cuts the file roughly
+    in half without losing anything Feather displays.
+    """
+    dl = app.get("downloadURL")
+    icon = app.get("iconURL")
+    bundle = app.get("bundleIdentifier") or app.get("bundleID")
+    if not dl or not icon or not bundle:
         return None
-    if not app.get("iconURL"):
-        return None
-    return app
+
+    entry = {
+        "name": app.get("name") or "Untitled",
+        "bundleIdentifier": bundle,
+        "developerName": app.get("developerName") or "Unknown",
+        "version": str(app.get("version") or "1.0"),
+        "versionDate": app.get("versionDate") or app.get("date") or "2026-01-01",
+        "downloadURL": dl,
+        "iconURL": icon,
+        "localizedDescription": (app.get("localizedDescription") or "")[:MAX_DESC],
+        "type": 1,
+    }
+    if app.get("subtitle"):
+        entry["subtitle"] = app["subtitle"]
+    size = app.get("size")
+    if size not in (None, ""):
+        try:
+            entry["size"] = int(size)
+        except (TypeError, ValueError):
+            pass
+    if app.get("minOSVersion"):
+        entry["minOSVersion"] = str(app["minOSVersion"])
+    if app.get("tintColor"):
+        entry["tintColor"] = app["tintColor"]
+    return entry
 
 
 def main():
     print("fetching fastsign...")
     fs = json.loads(fetch(FASTSIGN).decode("utf-8"))
-    fs_apps = [a for a in (normalize_fastsign(a) for a in fs["apps"]) if a]
+    fs_apps = [a for a in (slim_fastsign(a) for a in fs["apps"]) if a]
     print(f"  {len(fs_apps)} apps")
 
     print("scraping moe...")
@@ -205,8 +233,10 @@ def main():
     if SOURCE_URL:
         repo["sourceURL"] = SOURCE_URL
 
-    with io.open(OUT, "w", encoding="utf-8") as f:
-        json.dump(repo, f, ensure_ascii=False, indent=2)
+    # Minified + explicit newline="" so the file stays LF-only and as small as
+    # possible; GitHub Pages gzips it further in transit.
+    with io.open(OUT, "w", encoding="utf-8", newline="") as f:
+        json.dump(repo, f, ensure_ascii=False, separators=(",", ":"))
 
     print(f"wrote {OUT}: {len(apps)} apps total")
     print(f"  fastsign: {len(fs_apps)}  moe: {len(moe_apps)}")
